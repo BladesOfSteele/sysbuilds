@@ -1,0 +1,16 @@
+---
+  - name: LPAR Build
+    hosts: hmc
+    gather_facts: no
+    remote_user: hscroot
+
+
+    tasks:
+      - name: Get list of systems
+        raw: "lssysconn -r all -F type_model_serial_num,state"
+        register: sysconns
+        changed_when: False
+
+      - name: list of hosts
+        debug: 
+          var: sysconns
