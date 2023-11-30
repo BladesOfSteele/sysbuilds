@@ -1,0 +1,110 @@
+---
+  - name: Configure Node
+    hosts: hmc
+    serial: 1
+    gather_facts: no
+    remote_user: hscroot
+    collections:
+      - ibm.spectrum_virtualize
+      - ibm.power_hmc
+      - brocade.fos
+    vars:
+#      - hmc_host: dsshmc
+      - hmc_user: hscroot
+      - hmc_password: S0ccerBabe!
+      - system: Server-8286-41A-SN78E9E9W
+      - vm_name: test_vm
+      - vm_dict: {
+          'vmname': '{{ vm_name }}'
+          }
+
+    tasks:
+    - name: Create an AIX/Linux logical partition instance
+      ibm.power_hmc.powervm_lpar_instance:
+        hmc_host: "{{ inventory_hostname }}"
+        hmc_auth:
+          username: '{{ hmc_user }}'
+          password: '{{ hmc_password }}'
+        system_name: '{{ system }}'
+        vm_name: '{{ vm_name }}'
+        proc_unit: 0.1
+        proc: 1
+        min_mem: 256
+        mem: 512
+        npiv_config:
+         - vios_name: vios1
+           fc_port: fcs0
+         - vios_name: vios1
+           fc_port: fcs1
+        os_type: aix_linux
+        state: present
+      delegate_to: localhost
+
+    - name: Capture an AIX/Linux logical partition instance details
+      ibm.power_hmc.powervm_lpar_instance:
+        hmc_host: "{{ inventory_hostname }}"
+        hmc_auth:
+          username: '{{ hmc_user }}'
+          password: '{{ hmc_password }}'
+        system_name: '{{ system }}'
+        vm_name: '{{ vm_name }}'
+        advanced_info:  true
+        state: facts
+      delegate_to: localhost
+      register: facts
+
+#    - name: Show partition details
+#      debug:
+#        var: facts
+
+    - name: Create zoning command
+      debug:
+        msg:
+          - virtual slot "{{ item.ClientVirtualSlotNumber }}" 
+          - physical location "{{ item.LocationCode }}"
+          - WWPN's "{{ item.WWPNs.split(' ') }}"
+          - port name "{{ item.PortName }}"
+          - vio server "{{ item.vios }}"
+      loop: "{{ facts.partition_info.VirtualFiberChannelAdapters }}"
+      register: zones
+
+#    - name: Show zones var
+#      debug:
+#        var: zones
+#
+#
+#    - name: Loop through wwwn's
+#      debug:
+#        msg:
+#          - WWN: "{{ item.item.WWPNs.split(' ') }}"
+#      loop: "{{ zones.results }}"
+#      register: WWPNs
+#
+#    - name: Show WWPNs
+#      debug:
+#        var: item
+#      with_subelements:
+#        - '{{ WWPNs.results }}'
+#        -  msg
+#
+#  - name: Configure NPIV
+#    hosts: vio
+#    serial: 1
+#    gather_facts: no
+#
+#    tasks:
+#    - name: Gather mapping facts
+#      ibm.power_vios.mapping_facts:
+#
+#    - name: Print mapping facts
+#      debug:
+#        var: ansible_facts.mappings
+#
+#    - name: Populate the mapping facts with NPIV
+#      ibm.power_vios.mapping_facts:
+#        component: npiv
+#
+#    - name: Print mapping facts
+#      debug:
+#        var: ansible_facts.mappings
+

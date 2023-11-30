@@ -14,6 +14,9 @@
       - hmc_password: S0ccerBabe!
       - system: Server-8286-41A-SN78E9E9W
       - vm_name: test_vm
+      - vm_dict: {
+          'vmname': '{{ vm_name }}'
+          }
 
     tasks:
     - name: Create an AIX/Linux logical partition instance 
@@ -37,6 +40,66 @@
         state: present
       delegate_to: localhost
 
+    - name: show dict
+      debug:
+        var: vm_dict
+
+    - name: Get adapter slots
+      hmc_command:
+        hmc_host: "{{ inventory_hostname }}"
+        hmc_auth:
+          username: '{{ hmc_user }}'
+          password: '{{ hmc_password }}'
+        cmd: lshwres -r virtualio --rsubtype fc -m {{ system }} --level lpar -F slot_num --filter "lpar_names={{ vm_name }}"
+      register: slots
+      delegate_to: localhost
+
+    - name: Get slot details
+      hmc_command:
+        hmc_host: "{{ inventory_hostname }}"
+        hmc_auth:
+          username: '{{ hmc_user }}'
+          password: '{{ hmc_password }}'
+        cmd: lshwres -r virtualio --rsubtype fc -m {{ system }} --level lpar --filter "lpar_names={{ vm_name }},slots={{ item }}"
+      loop: "{{ slots.command_output }}"
+      loop_control:
+        label: "Adding information for {{ item }}"
+      register: slot_details
+      delegate_to: localhost
+
+    - name: Get wwn details
+      hmc_command:
+        hmc_host: "{{ inventory_hostname }}"
+        hmc_auth:
+          username: '{{ hmc_user }}'
+          password: '{{ hmc_password }}'
+        cmd: lshwres -r virtualio --rsubtype fc -m {{ system }} --level lpar -F wwpns --filter "lpar_names={{ vm_name }},slots={{ item }}"
+      loop: "{{ slots.command_output }}"
+      loop_control:
+        label: "Gathering WWN information for {{ item }}"
+      register: wwn_details
+      delegate_to: localhost
+
+    - name: show slot details before join
+      debug:
+        var: slot_details
+
+    - name: Join adapter and WWN info
+      set_fact:
+#        slots: "{{ slots | default([]) + [{ 'slot':item.item, 'details':item.command_output, 'wwwns':wwn.results[idx].stdout }] }}"
+#        slots: "{{ slots | combine ( { 'item': 'item.slot_details.results' } ) }}"
+#        new: "{{ slot_details.results[idx] | default ({}) | ansible.builtin.combine({ 'wwn': wwn_details }, recursive=True, list_merge='append')  | ansible.builtin.combine( { 'wwn2': slots }, recursive=true, list_merge='append') }}  "
+        new: "{{ new | default ({}) | combine({item.key: {'abc123': item.value}})}}"
+      loop: "{{ slot_details.results  }}"
+#      loop: "{{ slot_details | flatten(levels=1) }}"
+      loop_control:
+        index_var: idx
+        label: "Combining details for slot {{ item.item }}"
+
+    - name: shot slot details after join
+      debug:
+        var: new
+
     - name: Get list of installed WWPN's
       hmc_command:
         hmc_host: "{{ inventory_hostname }}"
@@ -44,23 +107,34 @@
           username: '{{ hmc_user }}'
           password: '{{ hmc_password }}'
 #        cmd: lshwres -r virtualio --rsubtype fc -m {{ system }} --level lpar -F lpar_name,slot_num,wwpns --filter "lpar_names={{ vm_name }}"
-        cmd: lshwres -r virtualio --rsubtype fc -m {{ system }} --level lpar --filter "lpar_names={{ vm_name }}"
-      register: wwpns
+        cmd: lshwres -r virtualio --rsubtype fc -m {{ system }} --level lpar -F wwpns --filter "lpar_names={{ vm_name }}"
+#        cmd: lshwres -r virtualio --rsubtype fc -m {{ system }} --level lpar --filter "lpar_names={{ vm_name }}"
+#        cmd: 'lshwres -r virtualio --rsubtype fc -m {{ system }} --level lpar -F wwpns --filter "lpar_names={{ vm_name }}" ; lshwres -r virtualio --rsubtype fc -m {{ system }} --level lpar --filter "lpar_names={{ vm_name }}" '
+      register: wwn
       delegate_to: localhost
 
     - name: show wwpns
       debug:
-        var: wwpns
+        var: vm_dict
 
     - name: get detail
       set_fact:
+#        l1: "{{ l1|d([]) + [dict(item|map('split', '='))] }}"
+#        npiv: "{{ item.split(',')  }}"
         npiv: "{{ item.split(',') | regex_replace('\"','') }}"
-      loop: "{{ wwpns.command_output }}"
-      register: fc_details
+      loop: "{{ vm_dict.command_output  }}"
+#      vars:
+#        _key: "{{ item.npiv.split('=')[0]|trim }}"
+#        _val: "{{ item.npiv.split('=')[1]|trim }}"
+      register: wwpns
 
-    - name: show npiv
+#    - name: split wwn
+#      set_fact:
+#        wwn: "{{ item.ansible_facts.npiv.wwpns
+
+    - name: show facts
       debug:
-        var: fc_details
+        var: wwpns
 
 #    - name: get NPIV info
 #      powervm_lpar_instance:
@@ -78,3 +152,10 @@
 #    - name: show NPIV
 #      debug:
 #        var: npiv
+
+    - name: aliases
+      debug:
+        msg: 
+          slot "{{ item.ansible_facts.npiv }}"
+#          For "{{ vm_name }}" create alias for slot "{{ item.npiv.slot_num }}" using WWPN's "{{ item.npiv.wwpns }}"
+      loop: "{{ fc_details.results }}"
