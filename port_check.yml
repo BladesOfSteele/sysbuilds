@@ -1,0 +1,68 @@
+---
+- name: Validate all ports are connected
+  hosts: validate
+  gather_facts: false
+
+  tasks:
+    - name: Gather device information
+      ansible.builtin.setup:
+        gather_subset:
+          - devices
+
+#    - name: Display devices
+#      debug: 
+#        var: ansible_facts.devices.fscsi0
+#        msg:
+#          - "{{ ansible_facts }}"
+
+    - name: Show all HBA connectivity
+      debug:
+        msg:
+          Connection for: "{{ item }}  {{ ansible_facts.devices[item].attributes.attach }}"
+      loop: "{{ ansible_facts.devices.keys() }}"
+      loop_control:
+#        label: "Get data for {{ item }}"
+        index_var: idx
+      when: item.startswith('fscsi')
+
+    - name: HBA with no connectivity
+      debug:
+        msg:
+          Connection for: "{{ item }} is NOT showing connected ({{ ansible_facts.devices[item].type }})"
+      loop: "{{ ansible_facts.devices.keys() }}"
+      loop_control:
+#        label: "Get data for {{ item }}"
+        index_var: idx
+      when: item.startswith('fscsi') and ansible_facts.devices[item].attributes.attach != 'switch'
+      failed_when: ansible_facts.devices[item].attributes.attach != 'switch'
+      ignore_errors: true
+
+    - name: Check NIC connectivity
+      shell:
+        cmd: "entstat -d {{ item }} | egrep -i 'LAN state|Physical Port Link Status'"
+      register: results
+      loop: "{{ ansible_facts.devices.keys() }}"
+      loop_control:
+#        label: "Get data for {{ item }}"
+        index_var: idx
+      when: item.startswith('ent')
+
+    - name: Display all NIC link status
+      debug:
+        msg:
+          Connection state: "{{ item.item }} is showing a state of {{ item.stdout }}"
+      loop: "{{ results.results }}"
+      loop_control:
+        label: "Get results for {{ item.item }} "
+      when: item.changed == true
+
+    - name: Display disconnected NIC's only
+      debug:
+        msg:
+          Connection state: "{{ item.item }} is showing a state of {{ item.stdout }}"
+      loop: "{{ results.results }}"
+      loop_control:
+        label: "Get results for {{ item.item }} "
+      when: item.changed == true and "Down" in item.stdout
+      failed_when: item.changed == true and "Down" in item.stdout
+      ignore_errors: true
