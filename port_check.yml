@@ -1,6 +1,6 @@
 ---
 - name: Validate all ports are connected
-  hosts: validate
+  hosts: all
   gather_facts: false
 
   tasks:

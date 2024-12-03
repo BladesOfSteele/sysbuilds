@@ -1,6 +1,6 @@
 ---
 - name: Test FC HBA and report if it is not connected
-  hosts: validate
+  hosts: all
   gather_facts: false
 
   tasks:
